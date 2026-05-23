@@ -41,7 +41,13 @@ def write_parquet(df: pd.DataFrame, path: Path, *, mode: Mode = Mode.APPEND) -> 
         df = df.drop_duplicates(subset=["open_time"], keep="last")
         df = df.sort_values("open_time").reset_index(drop=True)
 
-    df.to_parquet(path, index=False)
+    # Atomic write: stage to a sibling .tmp file, then rename. If the
+    # process is killed mid-write (OOM / SIGKILL / power loss / WSL
+    # restart), the original parquet remains intact and only the .tmp
+    # orphan is left (next run overwrites it).
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    df.to_parquet(tmp, index=False)
+    tmp.replace(path)
     logger.info("[parquet_io] wrote %s (%d rows, mode=%s)", path, len(df), mode.value)
 
 
