@@ -2,7 +2,13 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from binance_bars.fetcher import fetch_klines, list_symbols
+from binance_bars.fetcher import (
+    fetch_basis,
+    fetch_funding_rate,
+    fetch_klines,
+    fetch_open_interest,
+    list_symbols,
+)
 
 
 def _kline_row(open_time_ms: int, close_ms: int) -> list:
@@ -59,3 +65,43 @@ def test_list_symbols_futures_returns_trading_only():
 def test_list_symbols_unknown_market_raises():
     with pytest.raises(ValueError, match="market"):
         list_symbols(market="bogus")
+
+
+def test_fetch_funding_rate_returns_dataframe():
+    mock_resp = MagicMock(status_code=200, headers={"X-MBX-USED-WEIGHT-1M": "1"})
+    mock_resp.json.return_value = [
+        {"symbol": "BTCUSDT", "fundingTime": 1704067200000,
+         "fundingRate": "0.0001", "markPrice": "42000.0"},
+    ]
+    mock_resp.raise_for_status = MagicMock()
+    with patch("binance_bars.rate_limit.httpx.Client.get", return_value=mock_resp):
+        df = fetch_funding_rate(symbol="BTCUSDT", start="2024-01-01")
+    assert "funding_rate" in df.columns
+    assert df["funding_rate"].iloc[0] == 0.0001
+
+
+def test_fetch_open_interest_returns_dataframe():
+    mock_resp = MagicMock(status_code=200, headers={"X-MBX-USED-WEIGHT-1M": "1"})
+    mock_resp.json.return_value = [
+        {"symbol": "BTCUSDT", "sumOpenInterest": "1000.0",
+         "sumOpenInterestValue": "42000000.0", "timestamp": 1704067200000},
+    ]
+    mock_resp.raise_for_status = MagicMock()
+    with patch("binance_bars.rate_limit.httpx.Client.get", return_value=mock_resp):
+        df = fetch_open_interest(symbol="BTCUSDT", period="5m")
+    assert "open_interest" in df.columns
+    assert df["open_interest"].iloc[0] == 1000.0
+
+
+def test_fetch_basis_returns_dataframe():
+    mock_resp = MagicMock(status_code=200, headers={"X-MBX-USED-WEIGHT-1M": "1"})
+    mock_resp.json.return_value = [
+        {"pair": "BTCUSDT", "contractType": "CURRENT_QUARTER",
+         "futuresPrice": "43000.0", "indexPrice": "42000.0",
+         "basis": "1000.0", "basisRate": "0.0238", "timestamp": 1704067200000},
+    ]
+    mock_resp.raise_for_status = MagicMock()
+    with patch("binance_bars.rate_limit.httpx.Client.get", return_value=mock_resp):
+        df = fetch_basis(symbol="BTC", interval="1d")
+    assert "basis" in df.columns
+    assert df["basis"].iloc[0] == 1000.0

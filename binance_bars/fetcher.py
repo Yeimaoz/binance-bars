@@ -127,3 +127,95 @@ def fetch_klines(
     for c in ("open_time", "close_time"):
         df[c] = df[c].astype("int64")
     return df
+
+
+def fetch_funding_rate(
+    symbol: str,
+    start: str | datetime | int | None = None,
+    end: str | datetime | int | None = None,
+) -> pd.DataFrame:
+    """Fetch perpetual funding rate history (futures only)."""
+    url = _BASE_URLS["futures"] + "/fapi/v1/fundingRate"
+    params = {"symbol": symbol, "limit": 1000}
+    if (s := _to_ms(start)) is not None:
+        params["startTime"] = s
+    if (e := _to_ms(end)) is not None:
+        params["endTime"] = e
+    rows = _http_get(url, params)
+    if not rows:
+        return pd.DataFrame(columns=["funding_time", "symbol", "funding_rate",
+                                      "mark_price"])
+    df = pd.DataFrame(rows)
+    return pd.DataFrame({
+        "funding_time": df["fundingTime"].astype("int64"),
+        "symbol": df["symbol"],
+        "funding_rate": df["fundingRate"].astype(float),
+        "mark_price": df["markPrice"].astype(float),
+    })
+
+
+def fetch_open_interest(
+    symbol: str,
+    period: str = "5m",
+    start: str | datetime | int | None = None,
+    end: str | datetime | int | None = None,
+) -> pd.DataFrame:
+    """Fetch open interest history (futures only).
+
+    period: "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "6h" | "12h" | "1d"
+    """
+    url = _BASE_URLS["futures"] + "/futures/data/openInterestHist"
+    params = {"symbol": symbol, "period": period, "limit": 500}
+    if (s := _to_ms(start)) is not None:
+        params["startTime"] = s
+    if (e := _to_ms(end)) is not None:
+        params["endTime"] = e
+    rows = _http_get(url, params)
+    if not rows:
+        return pd.DataFrame(columns=["timestamp", "symbol", "open_interest",
+                                      "open_interest_value"])
+    df = pd.DataFrame(rows)
+    return pd.DataFrame({
+        "timestamp": df["timestamp"].astype("int64"),
+        "symbol": df["symbol"],
+        "open_interest": df["sumOpenInterest"].astype(float),
+        "open_interest_value": df["sumOpenInterestValue"].astype(float),
+    })
+
+
+def fetch_basis(
+    symbol: str,
+    interval: str = "1d",
+    pair_contract_type: str = "CURRENT_QUARTER",
+    start: str | datetime | int | None = None,
+    end: str | datetime | int | None = None,
+) -> pd.DataFrame:
+    """Fetch basis (futures - index) history.
+
+    symbol: base symbol e.g. "BTC" (passed as `pair=BTCUSDT`)
+    pair_contract_type: "CURRENT_QUARTER" | "NEXT_QUARTER" | "PERPETUAL"
+    """
+    url = _BASE_URLS["futures"] + "/futures/data/basis"
+    params = {
+        "pair": f"{symbol}USDT",
+        "contractType": pair_contract_type,
+        "period": interval,
+        "limit": 500,
+    }
+    if (s := _to_ms(start)) is not None:
+        params["startTime"] = s
+    if (e := _to_ms(end)) is not None:
+        params["endTime"] = e
+    rows = _http_get(url, params)
+    if not rows:
+        return pd.DataFrame(columns=["timestamp", "pair", "futures_price",
+                                      "index_price", "basis", "basis_rate"])
+    df = pd.DataFrame(rows)
+    return pd.DataFrame({
+        "timestamp": df["timestamp"].astype("int64"),
+        "pair": df["pair"],
+        "futures_price": df["futuresPrice"].astype(float),
+        "index_price": df["indexPrice"].astype(float),
+        "basis": df["basis"].astype(float),
+        "basis_rate": df["basisRate"].astype(float),
+    })
