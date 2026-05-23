@@ -9,3 +9,5 @@ dist/
 build/
 *.parquet
 data/
+
+*.log

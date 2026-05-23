@@ -1,6 +1,5 @@
 """Real Binance public API tests. Network required. No auth."""
 
-import pytest
 
 from binance_bars import fetch_klines, list_symbols
 
