@@ -11,8 +11,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal
 
-import httpx
 import pandas as pd
+
+from binance_bars.rate_limit import get_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,6 @@ _EXCHANGE_INFO_PATH = {
 }
 
 _KLINE_LIMIT = 1000  # max candles per request
-_HTTP_TIMEOUT = 30
 
 
 def _to_ms(t: str | datetime | int | None) -> int | None:
@@ -52,11 +52,9 @@ def _to_ms(t: str | datetime | int | None) -> int | None:
 
 
 def _http_get(url: str, params: dict) -> dict | list:
-    """GET helper that returns parsed JSON."""
-    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-        resp = client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
+    """GET with rate-limit handling + JSON parse."""
+    resp = get_with_backoff(url, params)
+    return resp.json()
 
 
 def list_symbols(
