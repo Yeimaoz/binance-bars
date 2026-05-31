@@ -106,18 +106,41 @@ def fetch_klines(
     if market not in _BASE_URLS:
         raise ValueError(f"unknown market: {market!r}")
     url = _BASE_URLS[market] + _KLINES_PATH[market]
-    params = {"symbol": symbol, "interval": interval, "limit": _KLINE_LIMIT}
     start_ms = _to_ms(start)
     end_ms = _to_ms(end)
-    if start_ms is not None:
-        params["startTime"] = start_ms
-    if end_ms is not None:
-        params["endTime"] = end_ms
-    rows = _http_get(url, params)
-    if not rows:
+
+    all_rows: list = []
+    cursor = start_ms  # None = "most recent" (no pagination needed)
+
+    while True:
+        params: dict = {"symbol": symbol, "interval": interval, "limit": _KLINE_LIMIT}
+        if cursor is not None:
+            params["startTime"] = cursor
+        if end_ms is not None:
+            params["endTime"] = end_ms
+
+        rows = _http_get(url, params)
+        if not rows:
+            break
+        all_rows.extend(rows)
+
+        # Stop if we got fewer rows than the page limit — no more pages.
+        if len(rows) < _KLINE_LIMIT:
+            break
+
+        # Advance cursor past the last candle's close_time.
+        # rows[-1][6] is close_time (index 6 in Binance kline tuple).
+        last_close_ms = int(rows[-1][6])
+        cursor = last_close_ms + 1
+
+        # If end_ms is set and we've already reached it, stop.
+        if end_ms is not None and cursor > end_ms:
+            break
+
+    if not all_rows:
         return pd.DataFrame(columns=["open_time", "open", "high", "low", "close",
                                       "volume", "close_time"])
-    df = pd.DataFrame(rows, columns=[
+    df = pd.DataFrame(all_rows, columns=[
         "open_time", "open", "high", "low", "close", "volume", "close_time",
         "_qav", "_ntrades", "_taker_base", "_taker_quote", "_ignore",
     ])
@@ -145,6 +168,11 @@ def fetch_funding_rate(
     if not rows:
         return pd.DataFrame(columns=["funding_time", "symbol", "funding_rate",
                                       "mark_price"])
+    if len(rows) == 1000 and start is not None:
+        logger.warning(
+            "[fetch_funding_rate] response hit limit=1000 — results may be truncated; "
+            "consider narrowing the time range."
+        )
     df = pd.DataFrame(rows)
     return pd.DataFrame({
         "funding_time": df["fundingTime"].astype("int64"),
@@ -174,6 +202,11 @@ def fetch_open_interest(
     if not rows:
         return pd.DataFrame(columns=["timestamp", "symbol", "open_interest",
                                       "open_interest_value"])
+    if len(rows) == 500 and start is not None:
+        logger.warning(
+            "[fetch_open_interest] response hit limit=500 — results may be truncated; "
+            "consider narrowing the time range."
+        )
     df = pd.DataFrame(rows)
     return pd.DataFrame({
         "timestamp": df["timestamp"].astype("int64"),
@@ -210,6 +243,11 @@ def fetch_basis(
     if not rows:
         return pd.DataFrame(columns=["timestamp", "pair", "futures_price",
                                       "index_price", "basis", "basis_rate"])
+    if len(rows) == 500 and start is not None:
+        logger.warning(
+            "[fetch_basis] response hit limit=500 — results may be truncated; "
+            "consider narrowing the time range."
+        )
     df = pd.DataFrame(rows)
     return pd.DataFrame({
         "timestamp": df["timestamp"].astype("int64"),

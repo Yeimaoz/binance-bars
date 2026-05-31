@@ -1,5 +1,7 @@
 """binance-bars — public OHLCV fetcher for Binance Spot + USDM-M Futures."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 from binance_bars.fetcher import (
     fetch_basis,
     fetch_funding_rate,
@@ -10,7 +12,10 @@ from binance_bars.fetcher import (
 from binance_bars.parquet_io import Mode, read_last_open_time, write_parquet
 from binance_bars.rate_limit import IpBannedError, RateLimitedError
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("binance-bars")
+except PackageNotFoundError:
+    __version__ = "0.1.1"  # fallback when package metadata is unavailable
 
 __all__ = [
     "fetch_klines",
