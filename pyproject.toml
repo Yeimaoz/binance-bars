@@ -37,4 +37,8 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers -m 'not e2e'"
+markers = [
+    "e2e: real Binance public API; requires network (set RUN_E2E=1 to enable)",
+]
+filterwarnings = []
