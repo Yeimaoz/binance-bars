@@ -90,7 +90,12 @@ def fetch_klines(
     start: str | datetime | int | None = None,
     end: str | datetime | int | None = None,
 ) -> pd.DataFrame:
-    """Fetch OHLCV klines from Binance public API.
+    """Fetch OHLCV klines from Binance public API with automatic pagination.
+
+    Binance returns at most ``_KLINE_LIMIT`` (1000) candles per request.
+    This function issues additional requests whenever a full batch is returned,
+    advancing the ``startTime`` to the close_time of the last bar + 1 ms, until
+    the batch is smaller than the limit or all data up to *end* is collected.
 
     Args:
         market: "spot" | "futures"
@@ -106,18 +111,37 @@ def fetch_klines(
     if market not in _BASE_URLS:
         raise ValueError(f"unknown market: {market!r}")
     url = _BASE_URLS[market] + _KLINES_PATH[market]
-    params = {"symbol": symbol, "interval": interval, "limit": _KLINE_LIMIT}
     start_ms = _to_ms(start)
     end_ms = _to_ms(end)
-    if start_ms is not None:
-        params["startTime"] = start_ms
-    if end_ms is not None:
-        params["endTime"] = end_ms
-    rows = _http_get(url, params)
-    if not rows:
+
+    all_rows: list = []
+    next_start = start_ms
+
+    while True:
+        params: dict = {"symbol": symbol, "interval": interval, "limit": _KLINE_LIMIT}
+        if next_start is not None:
+            params["startTime"] = next_start
+        if end_ms is not None:
+            params["endTime"] = end_ms
+
+        rows = _http_get(url, params)
+        if not rows:
+            break
+        all_rows.extend(rows)
+
+        # If we received a full batch and there is a defined end boundary that
+        # hasn't been reached yet, advance the cursor and fetch the next page.
+        if len(rows) == _KLINE_LIMIT:
+            last_close_time = int(rows[-1][6])  # close_time is index 6 in raw row
+            if end_ms is None or last_close_time < end_ms:
+                next_start = last_close_time + 1
+                continue
+        break
+
+    if not all_rows:
         return pd.DataFrame(columns=["open_time", "open", "high", "low", "close",
                                       "volume", "close_time"])
-    df = pd.DataFrame(rows, columns=[
+    df = pd.DataFrame(all_rows, columns=[
         "open_time", "open", "high", "low", "close", "volume", "close_time",
         "_qav", "_ntrades", "_taker_base", "_taker_quote", "_ignore",
     ])
@@ -154,33 +178,59 @@ def fetch_funding_rate(
     })
 
 
+_OI_LIMIT = 500  # Binance openInterestHist max per request
+
+
 def fetch_open_interest(
     symbol: str,
     period: str = "5m",
     start: str | datetime | int | None = None,
     end: str | datetime | int | None = None,
 ) -> pd.DataFrame:
-    """Fetch open interest history (futures only).
+    """Fetch open interest history (futures only) with automatic pagination.
+
+    Binance ``openInterestHist`` returns at most 500 records per request.
+    This function pages through results by advancing ``startTime`` to the
+    last returned timestamp + 1 ms whenever a full batch is returned.
 
     period: "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "6h" | "12h" | "1d"
     """
     url = _BASE_URLS["futures"] + "/futures/data/openInterestHist"
-    params = {"symbol": symbol, "period": period, "limit": 500}
-    if (s := _to_ms(start)) is not None:
-        params["startTime"] = s
-    if (e := _to_ms(end)) is not None:
-        params["endTime"] = e
-    rows = _http_get(url, params)
-    if not rows:
+    end_ms = _to_ms(end)
+    next_start = _to_ms(start)
+
+    all_batches: list[pd.DataFrame] = []
+
+    while True:
+        params: dict = {"symbol": symbol, "period": period, "limit": _OI_LIMIT}
+        if next_start is not None:
+            params["startTime"] = next_start
+        if end_ms is not None:
+            params["endTime"] = end_ms
+
+        rows = _http_get(url, params)
+        if not rows:
+            break
+
+        batch_df = pd.DataFrame(rows)
+        all_batches.append(pd.DataFrame({
+            "timestamp": batch_df["timestamp"].astype("int64"),
+            "symbol": batch_df["symbol"],
+            "open_interest": batch_df["sumOpenInterest"].astype(float),
+            "open_interest_value": batch_df["sumOpenInterestValue"].astype(float),
+        }))
+
+        if len(rows) == _OI_LIMIT:
+            last_ts = int(rows[-1]["timestamp"])
+            if end_ms is None or last_ts < end_ms:
+                next_start = last_ts + 1
+                continue
+        break
+
+    if not all_batches:
         return pd.DataFrame(columns=["timestamp", "symbol", "open_interest",
                                       "open_interest_value"])
-    df = pd.DataFrame(rows)
-    return pd.DataFrame({
-        "timestamp": df["timestamp"].astype("int64"),
-        "symbol": df["symbol"],
-        "open_interest": df["sumOpenInterest"].astype(float),
-        "open_interest_value": df["sumOpenInterestValue"].astype(float),
-    })
+    return pd.concat(all_batches, ignore_index=True)
 
 
 def fetch_basis(
