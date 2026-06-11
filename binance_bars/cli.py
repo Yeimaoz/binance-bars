@@ -14,7 +14,7 @@ from binance_bars.fetcher import (
     fetch_open_interest,
     list_symbols,
 )
-from binance_bars.parquet_io import Mode, write_parquet
+from binance_bars.parquet_io import Mode, PRIMARY_KEYS, write_parquet
 
 
 def _cmd_list_symbols(args: argparse.Namespace) -> int:
@@ -33,20 +33,23 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         start=args.start,
         end=args.end,
     )
-    write_parquet(df, Path(args.output), mode=Mode(args.mode))
+    write_parquet(df, Path(args.output), mode=Mode(args.mode),
+                  time_col=PRIMARY_KEYS["klines"])
     return 0
 
 
 def _cmd_funding_rate(args: argparse.Namespace) -> int:
     df = fetch_funding_rate(symbol=args.symbol, start=args.start, end=args.end)
-    write_parquet(df, Path(args.output), mode=Mode(args.mode))
+    write_parquet(df, Path(args.output), mode=Mode(args.mode),
+                  time_col=PRIMARY_KEYS["funding_rate"])
     return 0
 
 
 def _cmd_open_interest(args: argparse.Namespace) -> int:
     df = fetch_open_interest(symbol=args.symbol, period=args.period,
                               start=args.start, end=args.end)
-    write_parquet(df, Path(args.output), mode=Mode(args.mode))
+    write_parquet(df, Path(args.output), mode=Mode(args.mode),
+                  time_col=PRIMARY_KEYS["open_interest"])
     return 0
 
 
@@ -54,7 +57,8 @@ def _cmd_basis(args: argparse.Namespace) -> int:
     df = fetch_basis(symbol=args.symbol, interval=args.interval,
                       pair_contract_type=args.contract_type,
                       start=args.start, end=args.end)
-    write_parquet(df, Path(args.output), mode=Mode(args.mode))
+    write_parquet(df, Path(args.output), mode=Mode(args.mode),
+                  time_col=PRIMARY_KEYS["basis"])
     return 0
 
 

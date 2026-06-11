@@ -8,6 +8,7 @@ from binance_bars.fetcher import (
     fetch_klines,
     fetch_open_interest,
     list_symbols,
+    _KLINE_LIMIT,
 )
 
 
@@ -105,3 +106,118 @@ def test_fetch_basis_returns_dataframe():
         df = fetch_basis(symbol="BTC", interval="1d")
     assert "basis" in df.columns
     assert df["basis"].iloc[0] == 1000.0
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for pagination (High: silent data truncation)
+# These tests MUST be red before pagination is implemented and green after.
+# ---------------------------------------------------------------------------
+
+def _make_kline_batch(start_ms: int, count: int, interval_ms: int = 60_000) -> list:
+    """Generate `count` synthetic kline rows starting at start_ms."""
+    rows = []
+    for i in range(count):
+        open_time = start_ms + i * interval_ms
+        close_time = open_time + interval_ms - 1
+        rows.append(_kline_row(open_time, close_time))
+    return rows
+
+
+def test_fetch_klines_paginates_when_result_equals_limit(monkeypatch):
+    """When first batch returns exactly _KLINE_LIMIT rows, fetch_klines must
+    continue fetching subsequent pages until data is exhausted.
+
+    Setup: batch1 = 1000 rows (full), batch2 = 500 rows (partial → stop).
+    Expected: DataFrame with 1500 rows total.
+    """
+    interval_ms = 60_000
+    start_ms = 1_700_000_000_000
+    # batch 1: exactly LIMIT rows (triggers next page)
+    batch1 = _make_kline_batch(start_ms, _KLINE_LIMIT, interval_ms)
+    # batch 2: fewer than LIMIT rows (terminates pagination)
+    batch2_start = start_ms + _KLINE_LIMIT * interval_ms
+    batch2 = _make_kline_batch(batch2_start, 500, interval_ms)
+
+    call_count = 0
+
+    def fake_http_get(url, params):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return batch1
+        else:
+            return batch2
+
+    monkeypatch.setattr("binance_bars.fetcher._http_get", fake_http_get)
+    end_ms = start_ms + 2000 * interval_ms  # wide enough to cover both batches
+    df = fetch_klines(
+        market="futures", symbol="BTCUSDT", interval="1m",
+        start=start_ms, end=end_ms,
+    )
+    assert call_count == 2, f"expected 2 HTTP calls (pagination), got {call_count}"
+    assert len(df) == 1500, f"expected 1500 rows total, got {len(df)}"
+    # Rows must be monotonically increasing by open_time
+    assert df["open_time"].is_monotonic_increasing
+
+
+def test_fetch_klines_no_extra_request_when_partial_batch(monkeypatch):
+    """When first batch is smaller than LIMIT, no second request must be made."""
+    start_ms = 1_700_000_000_000
+    batch1 = _make_kline_batch(start_ms, 42, 60_000)
+
+    call_count = 0
+
+    def fake_http_get(url, params):
+        nonlocal call_count
+        call_count += 1
+        return batch1
+
+    monkeypatch.setattr("binance_bars.fetcher._http_get", fake_http_get)
+    df = fetch_klines(
+        market="futures", symbol="BTCUSDT", interval="1m",
+        start=start_ms, end=start_ms + 100 * 60_000,
+    )
+    assert call_count == 1, f"expected exactly 1 HTTP call, got {call_count}"
+    assert len(df) == 42
+
+
+def test_fetch_open_interest_paginates_when_result_equals_limit(monkeypatch):
+    """fetch_open_interest must paginate when batch equals its limit (500)."""
+    _OI_LIMIT = 500
+    period_ms = 5 * 60_000  # 5m
+    start_ms = 1_700_000_000_000
+
+    def _make_oi_batch(start_ms: int, count: int) -> list:
+        return [
+            {
+                "symbol": "BTCUSDT",
+                "sumOpenInterest": "1000.0",
+                "sumOpenInterestValue": "42000000.0",
+                "timestamp": start_ms + i * period_ms,
+            }
+            for i in range(count)
+        ]
+
+    batch1 = _make_oi_batch(start_ms, _OI_LIMIT)
+    batch2_start = start_ms + _OI_LIMIT * period_ms
+    batch2 = _make_oi_batch(batch2_start, 200)
+
+    call_count = 0
+
+    def fake_http_get(url, params):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return batch1
+        else:
+            return batch2
+
+    monkeypatch.setattr("binance_bars.fetcher._http_get", fake_http_get)
+    end_ms = start_ms + 1000 * period_ms
+    df = fetch_open_interest(
+        symbol="BTCUSDT", period="5m",
+        start=start_ms, end=end_ms,
+    )
+    assert call_count == 2, f"expected 2 HTTP calls (pagination), got {call_count}"
+    assert len(df) == 700, f"expected 700 rows total, got {len(df)}"
+    assert df["timestamp"].is_monotonic_increasing
