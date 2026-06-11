@@ -7,7 +7,7 @@ Public-API OHLCV bar fetcher for Binance Spot + USDM-M Futures. CLI + Python lib
 ## Install
 
 ```bash
-pip install git+https://github.com/Yeimaoz/binance-bars.git@v0.1.0
+pip install git+https://github.com/Yeimaoz/binance-bars.git@v0.1.1
 ```
 
 ## Quickstart
@@ -45,9 +45,13 @@ from binance_bars import (
     list_symbols,
 )
 
-# All return pandas DataFrame
+# All return pandas DataFrame.
+# fetch_klines and fetch_open_interest automatically paginate through all
+# available data for the requested start/end range — no manual iteration needed.
 df = fetch_klines(market="futures", symbol="BTCUSDT", interval="1m",
                   start="2024-12-01", end="2024-12-31")
+# Returns the full date-range (e.g. ~44,640 rows for December 1m) across
+# multiple paginated requests; Binance returns max 1,000 candles per request.
 print(df.tail())
 
 usdt_pairs = list_symbols(market="spot", quote="USDT")
@@ -119,11 +123,26 @@ Sibling lib `shioaji-bars` uses different conventions (`ts: datetime` instead of
 - Library reads `Retry-After` on HTTP 429 → sleeps + retries once.
 - HTTP 418 (IP banned) → raises `IpBannedError` immediately (no retry).
 
+## API limits
+
+Binance public endpoints cap responses per request:
+
+| Fetcher | Limit/request | Pagination |
+|---|---|---|
+| `fetch_klines` | 1,000 candles | automatic — pages until end is reached |
+| `fetch_open_interest` | 500 records | automatic — pages until end is reached |
+| `fetch_funding_rate` | 1,000 records | single request (Binance interval ~8 h → ~45 days) |
+| `fetch_basis` | 500 records | single request |
+
+For `fetch_funding_rate` and `fetch_basis`, if you need more than a single
+batch worth of history, call with a sliding `start`/`end` window and
+concatenate results.
+
 ## Testing
 
 ```bash
 pip install -e .[dev]
-pytest -v          # 22 tests: unit + parquet I/O + real-API e2e
+pytest -v          # unit + parquet I/O + real-API e2e
 ```
 
 E2E tests hit the real Binance public API (~10 weight total per run, well under any limit).
