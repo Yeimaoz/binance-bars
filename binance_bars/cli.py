@@ -69,8 +69,8 @@ def main(argv: list[str] | None = None) -> int:
     p_ls = sub.add_parser("list-symbols", help="List trading symbols")
     p_ls.add_argument("--market", choices=["spot", "futures"], default="futures")
     p_ls.add_argument("--quote", default=None, help="filter by quote asset (e.g. USDT)")
-    p_ls.add_argument("--trading-only", action="store_true", default=True,
-                      help="keep only status=TRADING")
+    p_ls.add_argument("--trading-only", action=argparse.BooleanOptionalAction, default=True,
+                      help="keep only status=TRADING (use --no-trading-only to include all)")
 
     p_fetch = sub.add_parser("fetch", help="Fetch OHLCV klines -> parquet")
     p_fetch.add_argument("--market", choices=["spot", "futures"], required=True)

@@ -38,10 +38,31 @@ _KLINE_LIMIT = 1000  # max candles per request
 
 
 def _to_ms(t: str | datetime | int | None) -> int | None:
-    """Convert flexible time input → unix ms int."""
+    """Convert flexible time input → unix milliseconds int.
+
+    Args:
+        t: One of:
+            - ``None`` — returned as-is (means "no bound").
+            - ``str``  — ISO date or datetime (e.g. ``"2024-01-01"``); parsed as UTC.
+            - ``datetime`` — naive datetimes are assumed UTC.
+            - ``int`` — **must be unix milliseconds** (e.g. 1_704_067_200_000).
+              Passing a unix-seconds value (e.g. ``int(time.time())`` ≈ 1_704_067_200)
+              is silently wrong: it would be interpreted as a timestamp in January 1970.
+              Values below 10_000_000_000 (< year 2286 in ms, > year 2001 in seconds)
+              trigger a warning to catch the common mistake of passing seconds.
+
+    Returns:
+        Unix milliseconds as int, or None.
+    """
     if t is None:
         return None
     if isinstance(t, int):
+        if t < 10_000_000_000:  # likely seconds (year 2001 boundary)
+            logger.warning(
+                "_to_ms received int %d which looks like unix seconds, not milliseconds. "
+                "Pass unix milliseconds (multiply by 1000) to avoid silently fetching "
+                "wrong time range.", t
+            )
         return t
     if isinstance(t, str):
         # parse YYYY-MM-DD or ISO datetime
@@ -242,8 +263,17 @@ def fetch_basis(
 ) -> pd.DataFrame:
     """Fetch basis (futures - index) history.
 
-    symbol: base symbol e.g. "BTC" (passed as `pair=BTCUSDT`)
+    symbol: base symbol e.g. "BTC" (passed as ``pair=BTCUSDT``)
     pair_contract_type: "CURRENT_QUARTER" | "NEXT_QUARTER" | "PERPETUAL"
+
+    Known Limitation — parameter naming inconsistency:
+        The ``interval`` parameter here maps to the Binance API ``period`` key and
+        accepts the same period strings used by ``fetch_open_interest`` (e.g. "5m",
+        "1d").  The sibling function ``fetch_open_interest`` correctly calls this
+        parameter ``period``.  Renaming ``fetch_basis(interval=...)`` to
+        ``fetch_basis(period=...)`` would be a breaking change and is deferred to a
+        future minor-version bump.  The CLI ``basis --interval`` flag carries the
+        same inconsistency relative to ``open-interest --period``.
     """
     url = _BASE_URLS["futures"] + "/futures/data/basis"
     params = {

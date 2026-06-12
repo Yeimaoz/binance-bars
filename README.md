@@ -142,10 +142,16 @@ concatenate results.
 
 ```bash
 pip install -e .[dev]
-pytest -v          # unit + parquet I/O + real-API e2e
+pytest -v          # 36 unit tests (e2e skipped by default)
+RUN_E2E=1 pytest -m e2e -v  # 3 real-API e2e tests (requires network)
 ```
 
 E2E tests hit the real Binance public API (~10 weight total per run, well under any limit).
+They are skipped by default; set `RUN_E2E=1` to enable them.
+
+## Known Limitations
+
+- **`fetch_basis` parameter naming**: The `interval` parameter of `fetch_basis` (and the `--interval` flag of the `basis` CLI subcommand) maps to the Binance API `period` key. The sibling `fetch_open_interest` correctly uses `period` for the same concept. Renaming this parameter would be a breaking change and is deferred to a future minor-version bump.
 
 ## License
 
