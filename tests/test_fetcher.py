@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 import httpx
 import pandas as pd
@@ -255,3 +256,53 @@ def test_fetch_open_interest_paginates_when_result_equals_limit(monkeypatch):
     assert call_count == 2, f"expected 2 HTTP calls (pagination), got {call_count}"
     assert len(df) == 700, f"expected 700 rows total, got {len(df)}"
     assert df["timestamp"].is_monotonic_increasing
+
+
+def _funding_row(funding_time_ms: int) -> dict:
+    return {
+        "fundingTime": funding_time_ms,
+        "symbol": "BTCUSDT",
+        "fundingRate": "0.0001",
+        "markPrice": "50000.0",
+    }
+
+
+def _basis_row(ts_ms: int) -> dict:
+    return {
+        "timestamp": ts_ms,
+        "pair": "BTCUSDT",
+        "futuresPrice": "50100.0",
+        "indexPrice": "50000.0",
+        "basis": "100.0",
+        "basisRate": "0.002",
+    }
+
+
+def test_fetch_funding_rate_warns_when_page_limit_hit(monkeypatch, caplog):
+    """A full batch (1000 rows) with a start bound may be truncated — must warn."""
+    rows = [_funding_row(1_700_000_000_000 + i * 28_800_000) for i in range(1000)]
+    monkeypatch.setattr("binance_bars.fetcher._http_get", lambda url, params: rows)
+    with caplog.at_level(logging.WARNING):
+        df = fetch_funding_rate("BTCUSDT", start=1_700_000_000_000)
+    assert len(df) == 1000
+    assert any("truncated" in rec.message for rec in caplog.records)
+
+
+def test_fetch_funding_rate_partial_batch_no_warning(monkeypatch, caplog):
+    """A partial batch is complete by definition — no truncation warning."""
+    rows = [_funding_row(1_700_000_000_000 + i * 28_800_000) for i in range(3)]
+    monkeypatch.setattr("binance_bars.fetcher._http_get", lambda url, params: rows)
+    with caplog.at_level(logging.WARNING):
+        df = fetch_funding_rate("BTCUSDT", start=1_700_000_000_000)
+    assert len(df) == 3
+    assert not any("truncated" in rec.message for rec in caplog.records)
+
+
+def test_fetch_basis_warns_when_page_limit_hit(monkeypatch, caplog):
+    """A full batch (500 rows) with a start bound may be truncated — must warn."""
+    rows = [_basis_row(1_700_000_000_000 + i * 86_400_000) for i in range(500)]
+    monkeypatch.setattr("binance_bars.fetcher._http_get", lambda url, params: rows)
+    with caplog.at_level(logging.WARNING):
+        df = fetch_basis("BTC", start=1_700_000_000_000)
+    assert len(df) == 500
+    assert any("truncated" in rec.message for rec in caplog.records)

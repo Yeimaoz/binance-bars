@@ -174,14 +174,21 @@ def fetch_klines(
     return df
 
 
+_FUNDING_LIMIT = 1000  # Binance fundingRate max per request (single request, no pagination)
+
+
 def fetch_funding_rate(
     symbol: str,
     start: str | datetime | int | None = None,
     end: str | datetime | int | None = None,
 ) -> pd.DataFrame:
-    """Fetch perpetual funding rate history (futures only)."""
+    """Fetch perpetual funding rate history (futures only).
+
+    Single request, max ``_FUNDING_LIMIT`` records; a full batch with a start
+    bound triggers a truncation warning (see README API limits table).
+    """
     url = _BASE_URLS["futures"] + "/fapi/v1/fundingRate"
-    params = {"symbol": symbol, "limit": 1000}
+    params = {"symbol": symbol, "limit": _FUNDING_LIMIT}
     if (s := _to_ms(start)) is not None:
         params["startTime"] = s
     if (e := _to_ms(end)) is not None:
@@ -190,6 +197,12 @@ def fetch_funding_rate(
     if not rows:
         return pd.DataFrame(columns=["funding_time", "symbol", "funding_rate",
                                       "mark_price"])
+    if len(rows) == _FUNDING_LIMIT and "startTime" in params:
+        logger.warning(
+            "[fetch_funding_rate] response hit limit=%d; results may be "
+            "truncated, narrow the time range to fetch the rest",
+            _FUNDING_LIMIT,
+        )
     df = pd.DataFrame(rows)
     return pd.DataFrame({
         "funding_time": df["fundingTime"].astype("int64"),
@@ -254,6 +267,9 @@ def fetch_open_interest(
     return pd.concat(all_batches, ignore_index=True)
 
 
+_BASIS_LIMIT = 500  # Binance basis max per request (single request, no pagination)
+
+
 def fetch_basis(
     symbol: str,
     interval: str = "1d",
@@ -280,7 +296,7 @@ def fetch_basis(
         "pair": f"{symbol}USDT",
         "contractType": pair_contract_type,
         "period": interval,
-        "limit": 500,
+        "limit": _BASIS_LIMIT,
     }
     if (s := _to_ms(start)) is not None:
         params["startTime"] = s
@@ -290,6 +306,12 @@ def fetch_basis(
     if not rows:
         return pd.DataFrame(columns=["timestamp", "pair", "futures_price",
                                       "index_price", "basis", "basis_rate"])
+    if len(rows) == _BASIS_LIMIT and "startTime" in params:
+        logger.warning(
+            "[fetch_basis] response hit limit=%d; results may be "
+            "truncated, narrow the time range to fetch the rest",
+            _BASIS_LIMIT,
+        )
     df = pd.DataFrame(rows)
     return pd.DataFrame({
         "timestamp": df["timestamp"].astype("int64"),
