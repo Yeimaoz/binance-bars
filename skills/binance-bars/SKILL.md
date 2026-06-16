@@ -199,3 +199,28 @@ stats = fetch_aggtrades(symbols=["BTCUSDT"], date_from="2024-01-01",
   `IpBannedError`、不重試。
 - **aggTrades（Vision CDN）**：靜態 CDN 無限流、無 backoff；404 → 計 `failed`，用
   `sleep_between` 做禮貌延遲即可。
+
+## 姊妹套件對照（vs shioaji-bars）
+
+`binance-bars`（公開 crypto）與 `shioaji-bars`（authenticated 台股 / 台指期）是
+姊妹 OSS 套件，刻意維持對齊的能力面與 API 形狀——學會一邊就能轉移到另一邊。
+依「概念」對照本套件函式 ↔ sibling 函式：
+
+| 概念 | binance-bars（本套件） | shioaji-bars（sibling） |
+|---|---|---|
+| 認證 | —（公開 REST，無金鑰） | `login()` / `logout()` |
+| OHLCV bars | `fetch_klines(market, symbol, interval, start, end)` | `fetch_kbars(api, contract, interval, start, end)` |
+| 逐筆成交 | `fetch_aggtrades(symbols, date_from, date_to, output_dir)` → stats（聚合·多 symbol × 多日·自寫檔；CLI `fetch-aggtrades`） | `fetch_ticks(api, contract, date)` → DataFrame 8 欄（逐筆·單合約單日·caller 寫檔；CLI `fetch-ticks`） |
+| 即時快照 | —（改提供 funding / OI / basis 衍生資料） | `fetch_snapshots(api, contracts)` |
+| 衍生資料 | `fetch_funding_rate` / `fetch_open_interest` / `fetch_basis` | — |
+| 標的清單 | `list_symbols` | `list_contracts` |
+| 寫檔 / 游標 | `write_parquet` / `read_last_open_time` | `write_parquet` / `read_last_ts` |
+| 逐筆時間欄 | `timestamp_ms`（int64 unix-ms） | `ts`（datetime64[ns, UTC]） |
+| 逐筆方向欄 | `is_buyer_maker`（taker 側） | `tick_type`（內外盤，**≠** `is_buyer_maker`） |
+
+**關鍵差異（逐筆成交）：** 兩邊逐筆語意不同——本套件是 **producer**
+（Binance Vision 批次封存，逐日自寫檔、多 symbol × 多日 resume-safe）；
+shioaji-bars 是 **reader**（走 shioaji per-day 配額，單日回 DataFrame、由 caller
+自行寫檔）。schema 風格各自延續本家 bars：本套件 int-ms（`timestamp_ms`），
+sibling tz-aware datetime（`ts`）。方向欄 `is_buyer_maker`（交易所 taker 側）
+與 `tick_type`（broker 內外盤）**語意不等價**，跨市場 order-flow 比較前必先正規化。
