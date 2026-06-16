@@ -58,6 +58,18 @@ def write_parquet(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    if df.empty:
+        if mode == Mode.OVERWRITE and path.exists():
+            logger.warning(
+                "[parquet_io] refusing to overwrite %s with empty DataFrame "
+                "(0 rows); existing file preserved",
+                path,
+            )
+            return
+        # APPEND / SKIP with empty df: nothing to merge, skip unnecessary IO
+        logger.warning("[parquet_io] skipping write — incoming DataFrame is empty (0 rows)")
+        return
+
     if mode == Mode.SKIP and path.exists():
         logger.info("[parquet_io] skip — %s already exists", path)
         return
