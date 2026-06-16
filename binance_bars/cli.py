@@ -7,6 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
+from binance_bars.aggtrades import fetch_aggtrades
 from binance_bars.fetcher import (
     fetch_basis,
     fetch_funding_rate,
@@ -62,6 +63,18 @@ def _cmd_basis(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_aggtrades(args: argparse.Namespace) -> int:
+    stats = fetch_aggtrades(
+        symbols=args.symbols,
+        date_from=args.date_from,
+        date_to=args.date_to,
+        output_dir=Path(args.output_dir),
+        sleep_between=args.sleep_between,
+    )
+    print(f"aggtrades: {stats}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="binance-bars")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -111,6 +124,21 @@ def main(argv: list[str] | None = None) -> int:
     p_b.add_argument("--mode", choices=["append", "overwrite", "skip"],
                        default="append")
 
+    p_agg = sub.add_parser(
+        "aggtrades",
+        help="Download Binance Vision aggTrades daily archives -> parquet",
+    )
+    p_agg.add_argument("--symbols", nargs="+", required=True,
+                       help="one or more symbols, e.g. BTCUSDT ETHUSDT")
+    p_agg.add_argument("--date-from", default=None,
+                       help="inclusive YYYY-MM-DD; default = per-symbol incremental resume")
+    p_agg.add_argument("--date-to", default=None,
+                       help="inclusive YYYY-MM-DD; default = yesterday UTC (Vision T+1 lag)")
+    p_agg.add_argument("--output-dir", required=True,
+                       help="root dir; files go to {dir}/{SYMBOL}/{SYMBOL}-aggTrades-{date}.parquet")
+    p_agg.add_argument("--sleep-between", type=float, default=0.3,
+                       help="politeness delay in seconds between downloads (default 0.3)")
+
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
     logging.basicConfig(level=logging.INFO,
                          format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -125,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_open_interest(args)
     if args.cmd == "basis":
         return _cmd_basis(args)
+    if args.cmd == "aggtrades":
+        return _cmd_aggtrades(args)
     return 2
 
 

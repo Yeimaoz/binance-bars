@@ -2,6 +2,18 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from binance_bars.aggtrades import (
+    BASE_URL,
+    CANONICAL_COLUMNS,
+    CANONICAL_DTYPES,
+    fetch_aggtrades,
+    infer_date_from,
+    is_file_valid,
+    iter_dates,
+    parse_zip_to_df,
+    validate_symbol,
+    write_atomic,
+)
 from binance_bars.fetcher import (
     fetch_basis,
     fetch_funding_rate,
@@ -28,4 +40,15 @@ __all__ = [
     "write_parquet",
     "IpBannedError",
     "RateLimitedError",
+    # aggTrades daily-archive module
+    "fetch_aggtrades",
+    "parse_zip_to_df",
+    "write_atomic",
+    "is_file_valid",
+    "infer_date_from",
+    "iter_dates",
+    "validate_symbol",
+    "CANONICAL_COLUMNS",
+    "CANONICAL_DTYPES",
+    "BASE_URL",
 ]
