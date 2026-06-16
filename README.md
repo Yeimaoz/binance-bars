@@ -7,7 +7,7 @@ Public-API OHLCV bar fetcher for Binance Spot + USDM-M Futures. CLI + Python lib
 ## Install
 
 ```bash
-pip install git+https://github.com/Yeimaoz/binance-bars.git@v0.1.1
+pip install git+https://github.com/Yeimaoz/binance-bars.git@v0.2.0
 ```
 
 ## Quickstart
@@ -35,7 +35,17 @@ python -m binance_bars open-interest --symbol BTCUSDT --period 5m \
 # Basis (perp vs quarterly future)
 python -m binance_bars basis --symbol BTC --interval 1d \
     --contract-type CURRENT_QUARTER --output ./basis/BTC.parquet
+
+# aggTrades daily archives (Binance Vision, futures USDM-M)
+python -m binance_bars aggtrades --symbols BTCUSDT \
+    --date-from 2024-01-01 --date-to 2024-02-01 --output-dir ./agg
+# daily archive (one file per symbol-day), T+1 publish lag, full history is GB-scale
 ```
+
+> ⚠️ **`fetch` footgun**: without `--start`, `fetch` returns only the most-recent
+> 1000 bars. Pass `--start` for history — `fetch_klines` then auto-paginates the
+> whole `start`→`end` range. `funding-rate` and `basis` are single-request (no
+> pagination); for long history use a sliding-window loop (see the bundled skill).
 
 ### Python lib
 
@@ -66,6 +76,7 @@ usdt_pairs = list_symbols(market="spot", quote="USDT")
 | `funding-rate` | `fetch_funding_rate` | `/fapi/v1/fundingRate` | none |
 | `open-interest` | `fetch_open_interest` | `/futures/data/openInterestHist` | none |
 | `basis` | `fetch_basis` | `/futures/data/basis` | none |
+| `aggtrades` | `fetch_aggtrades` | `data.binance.vision` daily archive | none |
 
 ## DataFrame schemas
 
@@ -109,6 +120,23 @@ Each fetcher returns a source-shaped DataFrame. Columns are NOT normalized acros
 | `basis` | float |
 | `basis_rate` | float |
 
+### fetch_aggtrades
+
+Daily-archive downloader (Binance Vision CDN, futures USDM-M). One Parquet per
+symbol-day at `{output_dir}/{SYMBOL}/{SYMBOL}-aggTrades-{YYYY-MM-DD}.parquet`,
+zstd-compressed. Returns `{"skipped", "downloaded", "failed"}`. Valid existing
+day-files are skipped (resume-safe); missing archives 404 gracefully (counted
+`failed`, no raise) — re-run to self-heal. T+1 publish lag: `date_to` defaults
+to yesterday-UTC.
+
+| Column | dtype | Notes |
+|---|---|---|
+| `agg_trade_id` | int64 | aggregated-trade id (unique per symbol) |
+| `price` | float64 | trade price |
+| `quantity` | float64 | trade quantity (base asset) |
+| `timestamp_ms` | int64 | trade time, ms UTC |
+| `is_buyer_maker` | bool | True = buyer is maker (ask-side fill) |
+
 ## Symbol format
 
 Binance uses concatenated base+quote, uppercase, no separator: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`. `fetch_basis` takes the base only (e.g. `BTC`); the lib appends `USDT` internally to form the API pair.
@@ -142,7 +170,7 @@ concatenate results.
 
 ```bash
 pip install -e .[dev]
-pytest -v          # 36 unit tests (e2e skipped by default)
+pytest -v          # unit tests (e2e skipped by default)
 RUN_E2E=1 pytest -m e2e -v  # 3 real-API e2e tests (requires network)
 ```
 
