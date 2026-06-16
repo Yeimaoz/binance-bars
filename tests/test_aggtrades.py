@@ -308,7 +308,7 @@ def test_cli_aggtrades_invokes_fetch(tmp_path):
 
     with patch("binance_bars.cli.fetch_aggtrades", side_effect=fake_fetch), \
          patch.object(sys, "argv", [
-             "binance-bars", "aggtrades",
+             "binance-bars", "fetch-aggtrades",
              "--symbols", "BTCUSDT", "ETHUSDT",
              "--date-from", "2024-01-01",
              "--date-to", "2024-01-02",

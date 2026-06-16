@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                        default="append")
 
     p_agg = sub.add_parser(
-        "aggtrades",
+        "fetch-aggtrades",
         help="Download Binance Vision aggTrades daily archives -> parquet",
     )
     p_agg.add_argument("--symbols", nargs="+", required=True,
@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_open_interest(args)
     if args.cmd == "basis":
         return _cmd_basis(args)
-    if args.cmd == "aggtrades":
+    if args.cmd == "fetch-aggtrades":
         return _cmd_aggtrades(args)
     return 2
 

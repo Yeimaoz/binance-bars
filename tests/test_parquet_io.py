@@ -136,6 +136,42 @@ def test_write_skip_if_exists_noop(tmp_path):
     assert out["open_time"].iloc[0] == 1000
 
 
+def test_write_empty_df_overwrite_preserves_existing(tmp_path):
+    """OVERWRITE with an empty df must NOT clobber an existing file.
+
+    A producer that yields zero rows (API hiccup / empty window) must never
+    erase already-persisted data.
+    """
+    path = tmp_path / "x.parquet"
+    write_parquet(_df([[1000, 1.0, 2.0, 0.5, 1.5, 100.0, 1059],
+                       [2000, 2.0, 3.0, 1.5, 2.5, 200.0, 2059]]),
+                  path, mode=Mode.OVERWRITE)
+    empty = _df([])
+    assert empty.empty
+    write_parquet(empty, path, mode=Mode.OVERWRITE)
+    out = pd.read_parquet(path)
+    assert len(out) == 2  # existing data intact, not overwritten
+    assert list(out["open_time"]) == [1000, 2000]
+
+
+def test_write_empty_df_overwrite_no_file_is_noop(tmp_path):
+    """OVERWRITE with an empty df + no existing file writes nothing (no empty file)."""
+    path = tmp_path / "x.parquet"
+    write_parquet(_df([]), path, mode=Mode.OVERWRITE)
+    assert not path.exists()
+
+
+def test_write_empty_df_append_skips(tmp_path):
+    """APPEND with an empty df must leave an existing file untouched."""
+    path = tmp_path / "x.parquet"
+    write_parquet(_df([[1000, 1.0, 2.0, 0.5, 1.5, 100.0, 1059]]),
+                  path, mode=Mode.OVERWRITE)
+    write_parquet(_df([]), path, mode=Mode.APPEND)
+    out = pd.read_parquet(path)
+    assert len(out) == 1
+    assert out["open_time"].iloc[0] == 1000
+
+
 def test_read_last_open_time_existing(tmp_path):
     path = tmp_path / "x.parquet"
     write_parquet(_df([[1000, 1.0, 2.0, 0.5, 1.5, 100.0, 1059],

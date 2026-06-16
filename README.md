@@ -37,7 +37,7 @@ python -m binance_bars basis --symbol BTC --interval 1d \
     --contract-type CURRENT_QUARTER --output ./basis/BTC.parquet
 
 # aggTrades daily archives (Binance Vision, futures USDM-M)
-python -m binance_bars aggtrades --symbols BTCUSDT \
+python -m binance_bars fetch-aggtrades --symbols BTCUSDT \
     --date-from 2024-01-01 --date-to 2024-02-01 --output-dir ./agg
 # daily archive (one file per symbol-day), T+1 publish lag, full history is GB-scale
 ```
@@ -76,7 +76,7 @@ usdt_pairs = list_symbols(market="spot", quote="USDT")
 | `funding-rate` | `fetch_funding_rate` | `/fapi/v1/fundingRate` | none |
 | `open-interest` | `fetch_open_interest` | `/futures/data/openInterestHist` | none |
 | `basis` | `fetch_basis` | `/futures/data/basis` | none |
-| `aggtrades` | `fetch_aggtrades` | `data.binance.vision` daily archive | none |
+| `fetch-aggtrades` | `fetch_aggtrades` | `data.binance.vision` daily archive | none |
 
 ## DataFrame schemas
 

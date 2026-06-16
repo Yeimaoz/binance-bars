@@ -63,7 +63,7 @@ python -m binance_bars basis --symbol BTC --interval 1d \
     --contract-type CURRENT_QUARTER --output ./basis/BTC.parquet
 
 # aggTrades 每日封存（無分頁迴圈，逐日下載）
-python -m binance_bars aggtrades --symbols BTCUSDT ETHUSDT \
+python -m binance_bars fetch-aggtrades --symbols BTCUSDT ETHUSDT \
     --date-from 2024-01-01 --date-to 2024-02-01 --output-dir ./agg
 ```
 
@@ -135,7 +135,7 @@ aggTrades 走 Binance Vision **靜態 CDN 的每日封存**——一個 parquet 
 完整逐筆聚合成交。**沒有分頁迴圈**：傳 `--date-from` / `--date-to`，套件逐日下載。
 
 ```bash
-python -m binance_bars aggtrades --symbols BTCUSDT --date-from 2024-01-01 \
+python -m binance_bars fetch-aggtrades --symbols BTCUSDT --date-from 2024-01-01 \
     --date-to 2024-02-01 --output-dir ./agg
 # → ./agg/BTCUSDT/BTCUSDT-aggTrades-2024-01-01.parquet ...
 ```
